@@ -30,6 +30,20 @@
       },
       "providerPlugin": "awscloudformation",
       "service": "AppSync"
+    },
+    "synapseAI": {
+      "dependsOn": [
+        {
+          "attributes": [
+            "Name",
+            "Arn"
+          ],
+          "category": "function",
+          "resourceName": "synapseAIChat"
+        }
+      ],
+      "providerPlugin": "awscloudformation",
+      "service": "API Gateway"
     }
   },
   "auth": {
@@ -58,6 +72,31 @@
       },
       "providerPlugin": "awscloudformation",
       "service": "Cognito"
+    }
+  },
+  "function": {
+    "synapseAIChat": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda"
+    }
+  },
+  "parameters": {
+    "AMPLIFY_function_synapseAIChat_deploymentBucketName": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "synapseAIChat"
+        }
+      ]
+    },
+    "AMPLIFY_function_synapseAIChat_s3Key": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "synapseAIChat"
+        }
+      ]
     }
   }
 }

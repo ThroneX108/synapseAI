@@ -9,14 +9,22 @@
       "UnauthRoleName": "amplify-synapse-dev-95f4c-unauthRole",
       "StackName": "amplify-synapse-dev-95f4c",
       "StackId": "arn:aws:cloudformation:ap-south-1:338394181738:stack/amplify-synapse-dev-95f4c/c7901220-e480-11f0-bd8b-022d4160c555",
-      "AmplifyAppId": "d31vke0rnwlpm5"
+      "AmplifyAppId": "d31vke0rnwlpm5",
+      "APIGatewayAuthURL": "https://s3.amazonaws.com/amplify-synapse-dev-95f4c-deployment/amplify-cfn-templates/api/APIGatewayAuthStack.json"
     },
     "categories": {
       "auth": {
         "synapseb55a94f8": {}
       },
       "api": {
-        "synapse": {}
+        "synapse": {},
+        "synapseAI": {}
+      },
+      "function": {
+        "synapseAIChat": {
+          "deploymentBucketName": "amplify-synapse-dev-95f4c-deployment",
+          "s3Key": "amplify-builds/synapseAIChat-4b2b49794a5772325034-build.zip"
+        }
       }
     }
   }
