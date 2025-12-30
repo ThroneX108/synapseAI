@@ -3,12 +3,10 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
-  agora_rtc_engine
   amplify_db_common
   connectivity_plus
   flutter_inappwebview_windows
-  iris_method_channel
-  permission_handler_windows
+  flutter_tts
   url_launcher_windows
 )
 

@@ -43,6 +43,7 @@ dependencies:
   google_fonts: ^6.1.0        # For clean typography
   flutter_animate: ^4.2.0     # Smooth animations (Vital for "calm" feel)
   flutter_animator: ^3.2.0
+  flutter_tts: ^4.2.3
 
   agora_rtc_engine: ^6.3.0
   permission_handler: ^11.3.0
