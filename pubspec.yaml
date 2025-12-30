@@ -42,6 +42,7 @@ dependencies:
   # UI & Styling
   google_fonts: ^6.1.0        # For clean typography
   flutter_animate: ^4.2.0     # Smooth animations (Vital for "calm" feel)
+  flutter_animator: ^3.2.0
 
   flutter_riverpod: ^2.4.9    # State Management (Easier than BLoC)
 
@@ -56,6 +57,7 @@ dependencies:
   amplify_auth_cognito: ^2.4.0
   amplify_authenticator: ^2.4.0
   amplify_api: ^2.4.0
+  http: ^1.6.0
 
 
 

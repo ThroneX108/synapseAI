@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http; // ✅ Added for API calls
 
 // --- IMPORTS FOR NAVIGATION ---
 import 'article_reading_screen.dart';
@@ -9,14 +11,14 @@ import 'video_player_screen.dart';
 
 // --- DATA MODEL ---
 class ResourceItem {
-  final String id; // Added ID for future AWS reference
+  final String id;
   final String title;
   final String type; // 'video' or 'article'
   final String category;
   final String duration;
   final String url;
   final String description;
-  final String thumbnailUrl; // Placeholder for AWS S3 Image URL
+  final String thumbnailUrl;
 
   ResourceItem({
     required this.id,
@@ -40,10 +42,9 @@ class ResourcesScreen extends StatefulWidget {
 class _ResourcesScreenState extends State<ResourcesScreen> {
   int _selectedIndex = 0;
   final List<String> _categories = ["All", "Anxiety", "Sleep", "Depression", "Focus"];
+  bool _isLoadingRecommendations = true; // Loading state
 
-  // --- MOCK DATA (AWS/ML PLACEHOLDERS) ---
-
-  // 1. ALL VIDEOS (To be fetched from AWS DynamoDB/S3)
+  // --- MOCK DATA (Ideally this comes from AWS DynamoDB) ---
   final List<ResourceItem> _allVideos = [
     ResourceItem(
       id: 'v1',
@@ -74,7 +75,6 @@ class _ResourcesScreenState extends State<ResourcesScreen> {
     ),
   ];
 
-  // 2. ALL ARTICLES (To be fetched from AWS DynamoDB/S3)
   final List<ResourceItem> _allArticles = [
     ResourceItem(
       id: 'a1',
@@ -105,20 +105,81 @@ class _ResourcesScreenState extends State<ResourcesScreen> {
     ),
   ];
 
-  // 3. RECOMMENDED ITEMS (To be fetched via ML Model Endpoint)
-  // Logic: User's mood/history -> Python Model -> Returns List of IDs -> Fetch Items
-  late List<ResourceItem> _recommendedItems;
+  // 3. RECOMMENDED ITEMS (Populated by AI)
+  List<ResourceItem> _recommendedItems = [];
 
   @override
   void initState() {
     super.initState();
-    // Simulating ML Recommendations (Mixing video and articles)
-    _recommendedItems = [
-      _allArticles[2], // Cognitive Distortions
-      _allVideos[1],   // Panic Attacks
-      _allArticles[1], // Dopamine
-    ];
+    // Fetch AI recommendations on startup
+    // In a real app, you would pass the user's latest mood log or journal entry here.
+    _fetchAIRecommendations("I have been feeling anxious and unable to sleep lately.");
   }
+
+  // --- 🧠 AI INTEGRATION LOGIC ---
+  Future<void> _fetchAIRecommendations(String userQuery) async {
+    const String apiUrl =
+        "https://recommandation-backend-2.onrender.com/query";
+
+    try {
+      final response = await http
+          .post(
+        Uri.parse(apiUrl),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"question": userQuery}),
+      )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        final answer = data['answer'];
+        final List<dynamic> identifiedCauses =
+        (answer is Map && answer['cause'] is List)
+            ? answer['cause']
+            : [];
+
+        final allResources = [..._allVideos, ..._allArticles];
+        final List<ResourceItem> matches = [];
+
+        for (var resource in allResources) {
+          for (var cause in identifiedCauses) {
+            if (resource.category
+                .toLowerCase()
+                .contains(cause.toString().toLowerCase()) ||
+                cause
+                    .toString()
+                    .toLowerCase()
+                    .contains(resource.category.toLowerCase())) {
+              if (!matches.contains(resource)) {
+                matches.add(resource);
+              }
+            }
+          }
+        }
+
+        if (mounted) {
+          setState(() {
+            _recommendedItems = matches.isNotEmpty
+                ? matches
+                : [_allVideos[1], _allArticles[2]];
+            _isLoadingRecommendations = false;
+          });
+        }
+      } else {
+        throw Exception("Server error");
+      }
+    } catch (e) {
+      debugPrint("AI recommendation error: $e");
+      if (mounted) {
+        setState(() {
+          _recommendedItems = [_allVideos[2], _allArticles[0]];
+          _isLoadingRecommendations = false;
+        });
+      }
+    }
+  }
+
 
   // Helper to filter based on category chips
   List<ResourceItem> _getFilteredList(List<ResourceItem> list) {
@@ -168,8 +229,13 @@ class _ResourcesScreenState extends State<ResourcesScreen> {
                   ],
                 ),
                 child: TextField(
+                  // Optional: You could allow users to type here to trigger new recommendations!
+                  onSubmitted: (value) {
+                    setState(() => _isLoadingRecommendations = true);
+                    _fetchAIRecommendations(value);
+                  },
                   decoration: InputDecoration(
-                    hintText: "Search topics...",
+                    hintText: "How are you feeling? (Press Enter)",
                     hintStyle: GoogleFonts.plusJakartaSans(color: Colors.grey[400]),
                     prefixIcon: const Icon(Icons.search, color: Color(0xFFA1C4FD)),
                     border: InputBorder.none,
@@ -222,8 +288,7 @@ class _ResourcesScreenState extends State<ResourcesScreen> {
             ),
           ),
 
-          // --- 4. SECTION: RECOMMENDED FOR YOU (Horizontal) ---
-          // Only show this if "All" is selected or if you want it persistent
+          // --- 4. SECTION: RECOMMENDED FOR YOU (AI Powered) ---
           if (_selectedIndex == 0) ...[
             SliverToBoxAdapter(
               child: Padding(
@@ -246,9 +311,11 @@ class _ResourcesScreenState extends State<ResourcesScreen> {
             ),
             SliverToBoxAdapter(
               child: Container(
-                height: 220, // Height for horizontal cards
+                height: 220,
                 margin: const EdgeInsets.only(bottom: 24),
-                child: ListView.builder(
+                child: _isLoadingRecommendations
+                    ? Center(child: CircularProgressIndicator(color: const Color(0xFFA1C4FD)))
+                    : ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   scrollDirection: Axis.horizontal,
                   itemCount: _recommendedItems.length,
@@ -260,18 +327,14 @@ class _ResourcesScreenState extends State<ResourcesScreen> {
             ),
           ],
 
-          // --- 5. SECTION: ALL VIDEOS (Vertical) ---
+          // --- 5. SECTION: ALL VIDEOS ---
           if (filteredVideos.isNotEmpty) ...[
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                 child: Text(
                   "Browse Videos",
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF1E293B),
-                  ),
+                  style: GoogleFonts.plusJakartaSans(fontSize: 18, fontWeight: FontWeight.bold, color: const Color(0xFF1E293B)),
                 ),
               ),
             ),
@@ -291,18 +354,14 @@ class _ResourcesScreenState extends State<ResourcesScreen> {
             ),
           ],
 
-          // --- 6. SECTION: ALL ARTICLES (Vertical) ---
+          // --- 6. SECTION: ALL ARTICLES ---
           if (filteredArticles.isNotEmpty) ...[
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
                 child: Text(
                   "Browse Articles",
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF1E293B),
-                  ),
+                  style: GoogleFonts.plusJakartaSans(fontSize: 18, fontWeight: FontWeight.bold, color: const Color(0xFF1E293B)),
                 ),
               ),
             ),
@@ -329,9 +388,8 @@ class _ResourcesScreenState extends State<ResourcesScreen> {
   }
 }
 
-// --- WIDGETS ---
+// --- WIDGETS (Unchanged) ---
 
-// 🆕 NEW: Card for Horizontal Scrolling "Recommended" Section
 class RecommendedResourceCard extends StatelessWidget {
   final ResourceItem item;
 
@@ -354,7 +412,7 @@ class RecommendedResourceCard extends StatelessWidget {
         margin: const EdgeInsets.only(right: 16),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isVideo ? const Color(0xFFFFF1F1) : const Color(0xFFF0F9FF), // Subtle tint
+          color: isVideo ? const Color(0xFFFFF1F1) : const Color(0xFFF0F9FF),
           borderRadius: BorderRadius.circular(24),
           border: Border.all(color: Colors.white, width: 2),
           boxShadow: [
@@ -364,7 +422,6 @@ class RecommendedResourceCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top Badge
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -387,7 +444,6 @@ class RecommendedResourceCard extends StatelessWidget {
               ],
             ),
             const Spacer(),
-            // Title
             Text(
               item.title,
               maxLines: 3,
@@ -400,7 +456,6 @@ class RecommendedResourceCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            // Footer
             Row(
               children: [
                 Icon(Icons.access_time_rounded, size: 14, color: Colors.grey[600]),
@@ -418,7 +473,6 @@ class RecommendedResourceCard extends StatelessWidget {
   }
 }
 
-// 📦 EXISTING: Card for Vertical Lists
 class ResourceListItem extends StatelessWidget {
   final ResourceItem item;
   final int index;
@@ -448,7 +502,6 @@ class ResourceListItem extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Icon Box
             Container(
               width: 50,
               height: 50,
@@ -463,7 +516,6 @@ class ResourceListItem extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 16),
-            // Text Details
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
