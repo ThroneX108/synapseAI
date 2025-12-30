@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:amplify_authenticator/amplify_authenticator.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
+import 'package:amplify_api/amplify_api.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -8,10 +9,12 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 
-// SCREEN IMPORTS
+// ✅ SCREEN IMPORTS
+// Adjust these paths to match your actual project structure
 import '../../../auth/role_selection_screen.dart';
 import '../../../counsellor/home/main_screen.dart';
 import '../../counselling/screens/talk_to_counsellor.dart';
+import '../../profile/screens/profile_screen.dart'; // Import the Profile Screen
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -23,11 +26,11 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   // --- STATE VARIABLES ---
   String _userName = "Loading...";
-  int _wellnessScore = 0;
+  int _wellnessScore = 50; // Default to 50
   String _currentMood = "Neutral";
 
   // Chart & Lifestyle Data
-  List<FlSpot> _moodSpots = const [FlSpot(0, 0)]; // Default empty line
+  List<FlSpot> _moodSpots = const [FlSpot(0, 0)];
   String _avgSleep = "0h";
   double _sleepPercent = 0.0;
   String _avgFocus = "0h";
@@ -42,7 +45,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _fetchDashboardData();
   }
 
-  // --- DATA FETCHING ---
+  // ==========================================
+  // 🚀 BACKEND LOGIC
+  // ==========================================
+
   Future<void> _fetchDashboardData() async {
     try {
       final user = await Amplify.Auth.getCurrentUser();
@@ -71,18 +77,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
       ''';
 
-      // 2. Request with EXPLICIT Authorization Mode
+      // 2. Request with Authorization Mode
       final request = GraphQLRequest<String>(
         document: graphQLDocument,
         variables: {'id': user.userId},
-        // -----------------------------------------------------------
-        // CRITICAL FIX: explicit ownership check
-        // -----------------------------------------------------------
         authorizationMode: APIAuthorizationType.userPools,
       );
 
       final response = await Amplify.API.query(request: request).response;
 
+      // Handle GraphQL Errors
       if (response.data == null || response.errors.isNotEmpty) {
         if (response.errors.isNotEmpty) {
           safePrint("Query Errors: ${response.errors}");
@@ -94,8 +98,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final data = jsonDecode(response.data!);
       final userProfile = data['getUserProfile'];
 
+      // If Profile doesn't exist in DB yet
       if (userProfile == null) {
-        // Profile doesn't exist in DB yet
         _handleMissingProfile();
         return;
       }
@@ -122,25 +126,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (studentData != null && studentData['moodLogs'] != null) {
         final logs = studentData['moodLogs']['items'] as List;
 
-        // Sort logs by date
+        // Sort logs by date (Oldest -> Newest)
         logs.sort((a, b) => a['date'].compareTo(b['date']));
 
         // Map last 7 logs to chart
-        for (int i = 0; i < logs.length; i++) {
-          if (i >= 7) break; // Limit to 7 days
+        int startIndex = (logs.length > 7) ? logs.length - 7 : 0;
+
+        for (int i = startIndex; i < logs.length; i++) {
           final log = logs[i];
-          spots.add(FlSpot(i.toDouble(), (log['score'] as num).toDouble()));
+          // X-axis is index (0 to 6), Y-axis is score
+          spots.add(FlSpot((i - startIndex).toDouble(), (log['score'] as num).toDouble()));
 
           totalSleep += (log['sleepHours'] ?? 0);
           totalFocus += (log['focusHours'] ?? 0);
         }
-        logCount = logs.length > 7 ? 7 : logs.length;
+        logCount = logs.length - startIndex;
       }
 
       // 5. Update UI State
       if (!mounted) return;
       setState(() {
-        _userName = userProfile['name'];
+        _userName = userProfile['name'] ?? "Friend";
         _profileExists = true;
         _isLoading = false;
 
@@ -150,14 +156,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           if (spots.isNotEmpty) {
             _moodSpots = spots;
+
             // Calculate Averages
             double avgS = logCount > 0 ? totalSleep / logCount : 0;
             _avgSleep = "${avgS.toStringAsFixed(1)}h";
-            _sleepPercent = (avgS / 8).clamp(0.0, 1.0);
+            _sleepPercent = (avgS / 8).clamp(0.0, 1.0); // Assuming 8h goal
 
             double avgF = logCount > 0 ? totalFocus / logCount : 0;
             _avgFocus = "${avgF.toStringAsFixed(1)}h";
-            _focusPercent = (avgF / 6).clamp(0.0, 1.0);
+            _focusPercent = (avgF / 6).clamp(0.0, 1.0); // Assuming 6h goal
           }
         }
       });
@@ -171,11 +178,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _handleMissingProfile() {
     if (!mounted) return;
     setState(() {
-      _userName = "Friend";
+      _userName = "User";
       _profileExists = false;
       _isLoading = false;
     });
   }
+
+  // ==========================================
+  // 🎨 UI SCAFFOLD
+  // ==========================================
 
   @override
   Widget build(BuildContext context) {
@@ -187,49 +198,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     if (!_profileExists) {
-      return Scaffold(
-        backgroundColor: Colors.white,
-        body: Padding(
-          padding: const EdgeInsets.all(30),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.account_circle_outlined, size: 80, color: Colors.orange),
-              const SizedBox(height: 24),
-              Text(
-                "Profile Missing",
-                style: GoogleFonts.plusJakartaSans(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                "You are logged in, but we don't know your name or role yet.",
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey),
-              ),
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1E293B),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: const Text("Complete Setup", style: TextStyle(color: Colors.white)),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const SignOutButton(),
-            ],
-          ),
-        ),
-      );
+      return _buildMissingProfileScreen();
     }
 
     return Scaffold(
@@ -265,7 +234,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // --- WIDGETS ---
+  // ==========================================
+  // 🧩 WIDGETS
+  // ==========================================
+
+  Widget _buildMissingProfileScreen() {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: Padding(
+        padding: const EdgeInsets.all(30),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.account_circle_outlined, size: 80, color: Colors.orange),
+            const SizedBox(height: 24),
+            Text(
+              "Profile Missing",
+              style: GoogleFonts.plusJakartaSans(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              "You are logged in, but we don't know your name or role yet.",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey),
+            ),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1E293B),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text("Complete Setup", style: TextStyle(color: Colors.white)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const SignOutButton(), // Amplify Widget
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildHeader() {
     return Row(
@@ -288,19 +305,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ],
         ),
-        Container(
-          padding: const EdgeInsets.all(2),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 5))],
-          ),
-          child: CircleAvatar(
-            radius: 24,
-            backgroundColor: Colors.teal.shade100,
-            child: Text(
-              _userName.isNotEmpty ? _userName[0].toUpperCase() : "U",
-              style: const TextStyle(fontSize: 20, color: Colors.teal),
+        // ✅ PROFILE NAVIGATION
+        GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const ProfileScreen()),
+            );
+          },
+          child: Container(
+            padding: const EdgeInsets.all(2),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 5))],
+            ),
+            child: CircleAvatar(
+              radius: 24,
+              backgroundColor: Colors.teal.shade100,
+              child: Text(
+                _userName.isNotEmpty ? _userName[0].toUpperCase() : "U",
+                style: const TextStyle(fontSize: 20, color: Colors.teal),
+              ),
             ),
           ),
         ),
@@ -375,7 +401,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           GestureDetector(
             onTap: () {
               ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Feature: Log Mood Screen coming soon!"))
+                  const SnackBar(content: Text("Mood Logging Feature coming next update! 🚀"))
               );
             },
             child: Container(
@@ -477,6 +503,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildMoodChart() {
+    // If no data, show a placeholder
+    if (_moodSpots.length <= 1) {
+      return Container(
+        height: 200,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Center(
+          child: Text(
+            "Log your mood to see trends",
+            style: GoogleFonts.plusJakartaSans(color: Colors.grey),
+          ),
+        ),
+      );
+    }
+
     return Container(
       height: 220,
       padding: const EdgeInsets.only(right: 20, left: 20, top: 24, bottom: 12),
@@ -490,15 +534,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: LineChart(
         LineChartData(
           gridData: const FlGridData(show: false),
-          titlesData: FlTitlesData(
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            bottomTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          ),
+          titlesData: const FlTitlesData(show: false),
           borderData: FlBorderData(show: false),
           minX: 0,
-          maxX: 6,
+          maxX: 6, // 7 Days (0-6)
           minY: 0,
           maxY: 10,
           lineBarsData: [
