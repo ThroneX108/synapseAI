@@ -1,24 +1,36 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:amplify_flutter/amplify_flutter.dart';
+import 'package:amplify_api/amplify_api.dart';
 
-// 1. Create a proper Model for type safety
+// --- DATA MODEL ---
 class ChatMessage {
+  final String id;
   final String text;
   final DateTime time;
   final bool isMe;
-  final bool isRead;
 
   ChatMessage({
+    required this.id,
     required this.text,
     required this.time,
     required this.isMe,
-    this.isRead = false,
   });
 }
 
 class ChatDetailScreen extends StatefulWidget {
-  final String studentName;
-  const ChatDetailScreen({super.key, required this.studentName});
+  final String otherUserName;
+  final String otherUserId; // 🔑 Vital: We need the ID to talk to them
+  final String? existingChatRoomId; // Optional: If we already know the room
+
+  const ChatDetailScreen({
+    super.key,
+    required this.otherUserName,
+    required this.otherUserId,
+    this.existingChatRoomId,
+  });
 
   @override
   State<ChatDetailScreen> createState() => _ChatDetailScreenState();
@@ -28,314 +40,329 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  bool _isTyping = false; // To simulate the "Other user is typing..." state
-
-  // Note: We initialize with 'reverse' order (Newest first) for the ListView
-  late List<ChatMessage> _messages;
+  List<ChatMessage> _messages = [];
+  String? _chatRoomId;
+  String? _myUserId;
+  bool _isLoading = true;
+  StreamSubscription? _subscription;
 
   @override
   void initState() {
     super.initState();
-    _loadMockMessages();
-  }
-
-  void _loadMockMessages() {
-    final now = DateTime.now();
-    _messages = [
-      ChatMessage(
-        text: "It takes practice. Let's try to focus on just 2 minutes today. I'm sending you a short guide.",
-        time: now.subtract(const Duration(minutes: 5)),
-        isMe: true,
-        isRead: true,
-      ),
-      ChatMessage(
-        text: "I tried, but I find it hard to focus.",
-        time: now.subtract(const Duration(minutes: 6)),
-        isMe: false,
-      ),
-      ChatMessage(
-        text: "Hi Aditya. That is completely normal. Have you tried the breathing exercises we discussed last week?",
-        time: now.subtract(const Duration(minutes: 10)),
-        isMe: true,
-        isRead: true,
-      ),
-      ChatMessage(
-        text: "Hello Dr. Sharma, I've been feeling a bit anxious about my upcoming exams.",
-        time: now.subtract(const Duration(minutes: 15)),
-        isMe: false,
-      ),
-    ];
-  }
-
-  // Helper to extract initials
-  String _getInitials(String name) {
-    if (name.isEmpty) return "";
-    List<String> parts = name.trim().split(" ");
-    if (parts.length > 1) {
-      return "${parts.first[0]}${parts.last[0]}".toUpperCase();
-    }
-    return parts.first[0].toUpperCase();
-  }
-
-  // Helper to format time (e.g., 10:30 AM)
-  String _formatTime(DateTime time) {
-    String hour = time.hour > 12 ? (time.hour - 12).toString() : time.hour.toString();
-    String period = time.hour >= 12 ? "PM" : "AM";
-    String minute = time.minute.toString().padLeft(2, '0');
-    return "$hour:$minute $period";
-  }
-
-  void _sendMessage() {
-    final text = _messageController.text.trim();
-    if (text.isEmpty) return;
-
-    // 1. Add User Message
-    setState(() {
-      _messages.insert(0, ChatMessage(
-        text: text,
-        time: DateTime.now(),
-        isMe: true,
-        isRead: false,
-      ));
-    });
-    _messageController.clear();
-
-    // 2. Simulate "Typing..." effect from the student
-    setState(() => _isTyping = true);
-
-    // 3. Simulate Auto-Reply (Frontend Magic)
-    Timer(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() {
-          _isTyping = false;
-          _messages.insert(0, ChatMessage(
-            text: "Thank you, doctor. I will try that right now.",
-            time: DateTime.now(),
-            isMe: false,
-          ));
-        });
-      }
-    });
+    _initializeChat();
   }
 
   @override
+  void dispose() {
+    _subscription?.cancel(); // 🛑 Always cancel subscriptions!
+    _messageController.dispose();
+    super.dispose();
+  }
+
+  // --- 1. INITIALIZATION SEQUENCE ---
+  Future<void> _initializeChat() async {
+    try {
+      // A. Who am I?
+      final user = await Amplify.Auth.getCurrentUser();
+      _myUserId = user.userId;
+
+      // B. Do we have a room?
+      if (widget.existingChatRoomId != null) {
+        _chatRoomId = widget.existingChatRoomId;
+      } else {
+        // C. Find or Create Room Logic
+        _chatRoomId = await _findOrCreateChatRoom();
+      }
+
+      // D. Load History & Subscribe
+      if (_chatRoomId != null) {
+        await _fetchMessageHistory();
+        _subscribeToMessages();
+      }
+
+      setState(() => _isLoading = false);
+    } catch (e) {
+      safePrint("Chat Init Error: $e");
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // --- 2. FIND OR CREATE ROOM ---
+  Future<String?> _findOrCreateChatRoom() async {
+    // For Hackathon speed: We will just CREATE a new room if we don't have an ID.
+    // Ideally, you query listChatRoomUsers to find a match, but that is complex.
+    // ⚠️ Strategy: We assume if the user clicked "Message", they want a connection.
+    try {
+      // 1. Create the Room
+      const createRoomMutation = 'mutation CreateRoom { createChatRoom(input: {}) { id } }';
+      final roomRes = await Amplify.API.mutate(request: GraphQLRequest<String>(
+          authorizationMode: APIAuthorizationType.userPools,
+          document: createRoomMutation)).response;
+      final roomId = jsonDecode(roomRes.data!)['createChatRoom']['id'];
+
+      // 2. Add ME to the Room
+      const linkUserMutation = '''mutation LinkUser(\$roomId: ID!, \$userId: ID!) {
+        createChatRoomUser(input: {chatRoomID: \$roomId, userID: \$userId}) { id }
+      }''';
+
+      await Amplify.API.mutate(request: GraphQLRequest<String>(
+          authorizationMode: APIAuthorizationType.userPools,
+          document: linkUserMutation,
+          variables: {'roomId': roomId, 'userId': _myUserId}
+      )).response;
+
+      // 3. Add THEM to the Room
+      await Amplify.API.mutate(request: GraphQLRequest<String>(
+          authorizationMode: APIAuthorizationType.userPools,
+          document: linkUserMutation,
+          variables: {'roomId': roomId, 'userId': widget.otherUserId}
+      )).response;
+
+      safePrint("✅ Created new Chat Room: $roomId");
+      return roomId;
+    } catch (e) {
+      safePrint("Error creating room: $e");
+      return null;
+    }
+  }
+
+  // --- 3. FETCH HISTORY ---
+  Future<void> _fetchMessageHistory() async {
+    try {
+      const listMsgs = '''query ListMsgs(\$roomId: ID!) {
+        listMessages(filter: {chatRoomID: {eq: \$roomId}}) {
+          items {
+            id
+            content
+            senderID
+            createdAt
+          }
+        }
+      }''';
+
+      final res = await Amplify.API.query(request: GraphQLRequest<String>(
+        authorizationMode: APIAuthorizationType.userPools,
+          document: listMsgs,
+          variables: {'roomId': _chatRoomId}
+      )).response;
+
+      final data = jsonDecode(res.data!);
+      final List items = data['listMessages']['items'];
+
+      // Sort by Time (Oldest first for ListView)
+      items.sort((a, b) => a['createdAt'].compareTo(b['createdAt']));
+
+      setState(() {
+        _messages = items.map((item) {
+          return ChatMessage(
+            id: item['id'],
+            text: item['content'],
+            time: DateTime.parse(item['createdAt']).toLocal(),
+            isMe: item['senderID'] == _myUserId,
+          );
+        }).toList();
+      });
+
+      // Scroll to bottom
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        }
+      });
+
+    } catch (e) {
+      safePrint("Error fetching history: $e");
+    }
+  }
+
+  // --- 4. REAL-TIME SUBSCRIPTION ---
+  void _subscribeToMessages() {
+    const subDoc = '''subscription OnCreateMsg(\$roomId: ID!) {
+      onCreateMessage(filter: {chatRoomID: {eq: \$roomId}}) {
+        id
+        content
+        senderID
+        createdAt
+      }
+    }''';
+
+    final operation = Amplify.API.subscribe(
+      GraphQLRequest<String>(
+        authorizationMode: APIAuthorizationType.userPools,
+          document: subDoc, variables: {'roomId': _chatRoomId}),
+      onEstablished: () => safePrint("✅ Subscribed to Room $_chatRoomId"),
+    );
+
+    _subscription = operation.listen((event) {
+      final data = jsonDecode(event.data!);
+      final newItem = data['onCreateMessage'];
+
+      // Prevent duplicates if my own message comes back via sub
+      if (_messages.any((m) => m.id == newItem['id'])) return;
+
+      final newMsg = ChatMessage(
+        id: newItem['id'],
+        text: newItem['content'],
+        time: DateTime.parse(newItem['createdAt']).toLocal(),
+        isMe: newItem['senderID'] == _myUserId,
+      );
+
+      setState(() {
+        _messages.add(newMsg);
+      });
+
+      // Auto-scroll
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent + 60,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    }, onError: (e) => safePrint("Subscription Error: $e"));
+  }
+
+  // --- 5. SEND MESSAGE ---
+  Future<void> _sendMessage() async {
+    final text = _messageController.text.trim();
+    if (text.isEmpty || _chatRoomId == null) return;
+
+    _messageController.clear();
+
+    try {
+      const sendDoc = '''mutation SendMsg(\$roomId: ID!, \$content: String!, \$sender: ID!) {
+        createMessage(input: {
+          chatRoomID: \$roomId, 
+          content: \$content, 
+          senderID: \$sender
+        }) {
+          id
+          createdAt
+        }
+      }''';
+
+      final req = GraphQLRequest<String>(
+        authorizationMode: APIAuthorizationType.userPools,
+        document: sendDoc,
+        variables: {
+          'roomId': _chatRoomId,
+          'content': text,
+          'sender': _myUserId,
+        },
+      );
+
+      final res = await Amplify.API.mutate(request: req).response;
+      if (res.hasErrors) {
+        safePrint("Send Error: ${res.errors.first.message}");
+      } else {
+        // Optimistic UI update is optional here because Subscription will handle it,
+        // but adding it makes it feel faster.
+        final data = jsonDecode(res.data!);
+        final created = data['createMessage'];
+
+        setState(() {
+          _messages.add(ChatMessage(
+            id: created['id'],
+            text: text,
+            time: DateTime.parse(created['createdAt']).toLocal(),
+            isMe: true,
+          ));
+        });
+      }
+    } catch (e) {
+      safePrint("Send Failed: $e");
+    }
+  }
+
+  // --- UI BUILD ---
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFEFE7DE), // Slight warm tone (WhatsApp-like)
+      backgroundColor: const Color(0xFFEFE7DE),
       appBar: AppBar(
+        title: Text(widget.otherUserName, style: const TextStyle(color: Colors.black)),
         backgroundColor: Colors.white,
         elevation: 1,
-        leadingWidth: 40,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Row(
-          children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: const Color(0xFF3b5998),
-              child: Text(
-                _getInitials(widget.studentName),
-                style: const TextStyle(fontSize: 14, color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.studentName,
-                  style: const TextStyle(color: Colors.black, fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  _isTyping ? "typing..." : "Online",
-                  style: TextStyle(
-                    color: _isTyping ? const Color(0xFF3b5998) : Colors.green,
-                    fontSize: 12,
-                    fontWeight: _isTyping ? FontWeight.bold : FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.videocam_outlined, color: Color(0xFF3b5998), size: 28),
-            onPressed: () {},
-          ),
-          IconButton(
-            icon: const Icon(Icons.info_outline, color: Colors.black54),
-            onPressed: () {},
-          ),
-        ],
+        iconTheme: const IconThemeData(color: Colors.black),
       ),
-      body: Column(
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
         children: [
-          // 1. The Chat List
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
-              reverse: true, // CRITICAL: This keeps list at bottom and handles keyboard push
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.all(16),
               itemCount: _messages.length,
               itemBuilder: (context, index) {
-                final message = _messages[index];
-
-                // Date Separator Logic (Optional: Add 'Today' header if date changes)
-                // For simplicity in this snippet, we focus on the bubbles
-
-                return _buildMessageBubble(message);
+                final msg = _messages[index];
+                return _buildBubble(msg);
               },
             ),
           ),
-
-          // 2. Typing Indicator (Visual flair)
-          if (_isTyping)
-            Padding(
-              padding: const EdgeInsets.only(left: 20, bottom: 10),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 12, height: 12,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.grey),
-                      ),
-                      SizedBox(width: 8),
-                      Text("Typing...", style: TextStyle(color: Colors.grey, fontSize: 12)),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-          // 3. Input Area
-          _buildInputArea(),
+          _buildInput(),
         ],
       ),
     );
   }
 
-  Widget _buildInputArea() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, -5),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        child: Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.add_circle_outline, color: Colors.grey, size: 28),
-              onPressed: () {},
-            ),
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: Colors.grey[200]!),
-                ),
-                child: TextField(
-                  controller: _messageController,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(
-                    hintText: "Type a message...",
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: _sendMessage,
-              child: const CircleAvatar(
-                radius: 24,
-                backgroundColor: Color(0xFF3b5998),
-                child: Icon(Icons.send, color: Colors.white, size: 20),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMessageBubble(ChatMessage msg) {
+  Widget _buildBubble(ChatMessage msg) {
     return Align(
       alignment: msg.isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
         decoration: BoxDecoration(
           color: msg.isMe ? const Color(0xFF3b5998) : Colors.white,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: msg.isMe ? const Radius.circular(16) : Radius.zero,
-            bottomRight: msg.isMe ? Radius.zero : const Radius.circular(16),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 2,
-              offset: const Offset(0, 1),
-            ),
-          ],
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 2, offset: const Offset(0,1))],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
               msg.text,
-              style: TextStyle(
-                color: msg.isMe ? Colors.white : Colors.black87,
-                fontSize: 15,
-                height: 1.3,
-              ),
+              style: TextStyle(color: msg.isMe ? Colors.white : Colors.black87, fontSize: 15),
             ),
             const SizedBox(height: 4),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _formatTime(msg.time),
-                  style: TextStyle(
-                    color: msg.isMe ? Colors.white70 : Colors.grey[500],
-                    fontSize: 10,
-                  ),
-                ),
-                if (msg.isMe) ...[
-                  const SizedBox(width: 4),
-                  Icon(
-                    Icons.done_all,
-                    size: 14,
-                    color: msg.isRead ? Colors.lightBlueAccent : Colors.white54,
-                  ),
-                ]
-              ],
+            Text(
+              DateFormat('hh:mm a').format(msg.time),
+              style: TextStyle(color: msg.isMe ? Colors.white70 : Colors.grey, fontSize: 10),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildInput() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.all(10),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _messageController,
+              decoration: InputDecoration(
+                hintText: "Type a message...",
+                filled: true,
+                fillColor: Colors.grey[100],
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          CircleAvatar(
+            backgroundColor: const Color(0xFF3b5998),
+            child: IconButton(
+              icon: const Icon(Icons.send, color: Colors.white, size: 20),
+              onPressed: _sendMessage,
+            ),
+          ),
+        ],
       ),
     );
   }

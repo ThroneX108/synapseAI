@@ -55,6 +55,7 @@ class _ChatsTabState extends State<ChatsTab> {
       }''';
 
       final request = GraphQLRequest<String>(
+        authorizationMode: APIAuthorizationType.userPools,
         document: graphQLDocument,
         variables: {'myId': _myUserId},
       );

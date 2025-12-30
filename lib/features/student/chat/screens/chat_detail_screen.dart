@@ -95,7 +95,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     try {
       // 1. Create the Room
       const createRoomMutation = 'mutation CreateRoom { createChatRoom(input: {}) { id } }';
-      final roomRes = await Amplify.API.mutate(request: GraphQLRequest<String>(document: createRoomMutation)).response;
+      final roomRes = await Amplify.API.mutate(
+          request: GraphQLRequest<String>(
+            authorizationMode: APIAuthorizationType.userPools,
+              document: createRoomMutation)).response;
       final roomId = jsonDecode(roomRes.data!)['createChatRoom']['id'];
 
       // 2. Add ME to the Room
@@ -104,12 +107,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       }''';
 
       await Amplify.API.mutate(request: GraphQLRequest<String>(
+        authorizationMode: APIAuthorizationType.userPools,
           document: linkUserMutation,
           variables: {'roomId': roomId, 'userId': _myUserId}
       )).response;
 
       // 3. Add THEM to the Room
       await Amplify.API.mutate(request: GraphQLRequest<String>(
+        authorizationMode: APIAuthorizationType.userPools,
           document: linkUserMutation,
           variables: {'roomId': roomId, 'userId': widget.otherUserId}
       )).response;
@@ -137,6 +142,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       }''';
 
       final res = await Amplify.API.query(request: GraphQLRequest<String>(
+        authorizationMode: APIAuthorizationType.userPools,
           document: listMsgs,
           variables: {'roomId': _chatRoomId}
       )).response;
@@ -182,7 +188,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     }''';
 
     final operation = Amplify.API.subscribe(
-      GraphQLRequest<String>(document: subDoc, variables: {'roomId': _chatRoomId}),
+      GraphQLRequest<String>(
+        authorizationMode: APIAuthorizationType.userPools,
+          document: subDoc, variables: {'roomId': _chatRoomId}),
       onEstablished: () => safePrint("✅ Subscribed to Room $_chatRoomId"),
     );
 
@@ -235,6 +243,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       }''';
 
       final req = GraphQLRequest<String>(
+        authorizationMode: APIAuthorizationType.userPools,
         document: sendDoc,
         variables: {
           'roomId': _chatRoomId,

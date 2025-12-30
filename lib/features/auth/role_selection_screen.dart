@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 // Imports for navigation (ensure these paths match your project)
 import 'package:synapse/features/counsellor/dashboard/screens/counsellor_dashboard.dart';
+import 'package:synapse/features/counsellor/home/main_screen.dart';
 
 import '../student/home/main_screen.dart';
 
@@ -98,7 +99,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
     switch (role) {
       case 'COUNSELOR':
       // Ensure you are navigating to the Dashboard wrapper that handles tabs
-        next = CounsellorDashboard(onSwitchTab: (index) {});
+        next = CounsellorMainScreen();
         break;
       case 'STUDENT':
       default:

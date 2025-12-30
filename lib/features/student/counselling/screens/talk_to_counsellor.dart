@@ -54,7 +54,7 @@ class _TalkToCounsellorScreenState extends State<TalkToCounsellorScreen> {
     try {
       // 1. Updated Query (Removed 'details' which caused the crash)
       const graphQLDocument = '''query ListCounselors {
-        listUserProfiles(filter: { role: { eq: "COUNSELOR" } }) {
+        listUserProfiles(filter: { role: { eq: COUNSELOR } }) {
           items {
             id
             name
@@ -64,7 +64,9 @@ class _TalkToCounsellorScreenState extends State<TalkToCounsellorScreen> {
         }
       }''';
 
-      final request = GraphQLRequest<String>(document: graphQLDocument);
+      final request = GraphQLRequest<String>(
+        authorizationMode: APIAuthorizationType.userPools,
+          document: graphQLDocument);
       final response = await Amplify.API.query(request: request).response;
 
       // 2. Safety Check: Handle Errors gracefully
@@ -439,6 +441,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
       final awsDate = DateFormat('yyyy-MM-dd').format(dateObj);
 
       final request = GraphQLRequest<String>(
+        authorizationMode: APIAuthorizationType.userPools,
         document: graphQLDocument,
         variables: {
           "cid": widget.counsellor.id,

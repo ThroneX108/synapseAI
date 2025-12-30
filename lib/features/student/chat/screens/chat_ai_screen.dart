@@ -115,7 +115,7 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
-      leading: Padding(
+      /*leading: Padding(
         padding: const EdgeInsets.only(left: 16.0),
         child: GestureDetector(
           onTap: () => Navigator.pop(context),
@@ -124,7 +124,7 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
             child: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: Colors.black87),
           ),
         ),
-      ),
+      ),*/
       title: Text(
         "Chat with Synapse AI",
         style: GoogleFonts.plusJakartaSans(color: Colors.black87, fontSize: 16, fontWeight: FontWeight.w600),
