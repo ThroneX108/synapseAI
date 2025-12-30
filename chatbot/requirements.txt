@@ -1,0 +1,7 @@
+gradio
+google-genai
+PyPDF2
+numpy
+scikit-learn
+chromadb
+sentence-transformers
