@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:amplify_api/amplify_api.dart';
 
+import '../../../video_call/video_call_screen.dart';
+
 // --- DATA MODEL ---
 class ChatMessage {
   final String id;
@@ -57,6 +59,23 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     _subscription?.cancel(); // 🛑 Always cancel subscriptions!
     _messageController.dispose();
     super.dispose();
+  }
+
+  void _joinVideoCall() {
+    if (_chatRoomId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Chat room not ready yet."))
+      );
+      return;
+    }
+    _messageController.text = "📞 I started a video call. Click the video icon to join.";
+    _sendMessage();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => VideoCallScreen(channelName: _chatRoomId!),
+      ),
+    );
   }
 
   // --- 1. INITIALIZATION SEQUENCE ---
@@ -284,6 +303,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         backgroundColor: Colors.white,
         elevation: 1,
         iconTheme: const IconThemeData(color: Colors.black),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.videocam, color: Color(0xFF006D77)),
+            onPressed: _joinVideoCall,
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

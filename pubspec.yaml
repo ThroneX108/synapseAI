@@ -44,6 +44,9 @@ dependencies:
   flutter_animate: ^4.2.0     # Smooth animations (Vital for "calm" feel)
   flutter_animator: ^3.2.0
 
+  agora_rtc_engine: ^6.3.0
+  permission_handler: ^11.3.0
+
   flutter_riverpod: ^2.4.9    # State Management (Easier than BLoC)
 
   # The following adds the Cupertino Icons font to your application.

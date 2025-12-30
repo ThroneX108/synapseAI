@@ -9,8 +9,7 @@
       "UnauthRoleName": "amplify-synapse-dev-95f4c-unauthRole",
       "StackName": "amplify-synapse-dev-95f4c",
       "StackId": "arn:aws:cloudformation:ap-south-1:338394181738:stack/amplify-synapse-dev-95f4c/c7901220-e480-11f0-bd8b-022d4160c555",
-      "AmplifyAppId": "d31vke0rnwlpm5",
-      "APIGatewayAuthURL": "https://s3.amazonaws.com/amplify-synapse-dev-95f4c-deployment/amplify-cfn-templates/api/APIGatewayAuthStack.json"
+      "AmplifyAppId": "d31vke0rnwlpm5"
     },
     "categories": {
       "auth": {
