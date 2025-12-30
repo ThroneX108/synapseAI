@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:synapse/features/counsellor/dashboard/screens/all_requests_screen.dart';
 
+import '../../schedule/screens/session_details_screen.dart';
+
+
 class CounsellorDashboard extends StatefulWidget {
   final Function(int) onSwitchTab;
 
@@ -15,19 +18,15 @@ class CounsellorDashboard extends StatefulWidget {
 }
 
 class _CounsellorDashboardState extends State<CounsellorDashboard> {
-  // --- State Variables ---
+  // ... (Keep existing State Variables & initState) ...
   bool _isLoading = true;
   bool _isOnline = false;
   String _counselorProfileId = "";
   String _counselorName = "Dr. Expert";
   String _specialization = "Psychologist";
-
-  // Stats
   int _pendingCount = 0;
   int _todayCount = 0;
   int _totalCount = 0;
-
-  // Lists
   List<dynamic> _upcomingSessions = [];
   List<dynamic> _pendingRequests = [];
 
@@ -37,11 +36,17 @@ class _CounsellorDashboardState extends State<CounsellorDashboard> {
     _fetchDashboardData();
   }
 
-  // ==========================================
-  // 🚀 BACKEND LOGIC
-  // ==========================================
+  // ... (Keep existing _fetchDashboardData, _updateRequestStatus, _toggleOnlineStatus logic) ...
 
+  // For brevity, I am not repeating the huge backend logic block here as it remains unchanged.
+  // Just ensure _fetchDashboardData, _updateRequestStatus, etc. are still in your class.
+
+  // ---------------------------------------------------------------------------
+  // COPY PREVIOUS BACKEND LOGIC HERE (methods: _fetchDashboardData, etc.)
+  // ---------------------------------------------------------------------------
   Future<void> _fetchDashboardData() async {
+    // ... (Your existing fetch logic)
+    // Same as provided in your prompt
     try {
       final user = await Amplify.Auth.getCurrentUser();
 
@@ -86,7 +91,7 @@ class _CounsellorDashboardState extends State<CounsellorDashboard> {
       final userProfile = counselorProfile['user'];
       _counselorProfileId = counselorProfile['id'];
 
-      // 2. FETCH APPOINTMENTS (Using Broad Fetch + Client Filter)
+      // 2. FETCH APPOINTMENTS
       const String apptQuery = '''
         query ListCounselorAppointments(\$cid: ID!) {
           listAppointments(filter: { counselorID: { eq: \$cid } }) {
@@ -170,9 +175,8 @@ class _CounsellorDashboardState extends State<CounsellorDashboard> {
     }
   }
 
-  // ✅ ADDED: Update Status Logic
   Future<void> _updateRequestStatus(String appointmentId, bool isAccepted) async {
-    // Optimistic Update
+    // ... (Your existing status update logic)
     setState(() {
       _pendingRequests.removeWhere((appt) => appt['id'] == appointmentId);
       _pendingCount = _pendingRequests.length;
@@ -226,6 +230,7 @@ class _CounsellorDashboardState extends State<CounsellorDashboard> {
   }
 
   Future<void> _toggleOnlineStatus(bool val) async {
+    // ... (Your existing toggle logic)
     setState(() => _isOnline = val);
     try {
       const String mutation = '''
@@ -295,6 +300,7 @@ class _CounsellorDashboardState extends State<CounsellorDashboard> {
                 final isToday = appt['date'] == DateFormat('yyyy-MM-dd').format(DateTime.now());
 
                 return SessionCard(
+                  appointmentId: appt['id'], // ✅ PASS ID HERE
                   name: studentName,
                   time: "${appt['timeSlot']} (${appt['date'].substring(5)})",
                   issue: appt['topic'] ?? "General",
@@ -340,6 +346,7 @@ class _CounsellorDashboardState extends State<CounsellorDashboard> {
   }
 
   PreferredSizeWidget _buildAppBar() {
+    // ... (Keep existing AppBar logic)
     return AppBar(
       elevation: 0,
       backgroundColor: Colors.white,
@@ -391,6 +398,7 @@ class _CounsellorDashboardState extends State<CounsellorDashboard> {
   }
 
   Widget _buildEmptyState(String text) {
+    // ... (Keep existing empty state)
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 20),
@@ -406,6 +414,7 @@ class _CounsellorDashboardState extends State<CounsellorDashboard> {
   }
 
   Widget _buildSectionHeader(String title, {required VoidCallback onSeeAll}) {
+    // ... (Keep existing header)
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -422,6 +431,7 @@ class _CounsellorDashboardState extends State<CounsellorDashboard> {
   }
 
   Widget _buildStatCard({required String title, required String count, required Color color}) {
+    // ... (Keep existing stat card)
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 20),
@@ -442,12 +452,21 @@ class _CounsellorDashboardState extends State<CounsellorDashboard> {
   }
 }
 
-// --- WIDGETS ---
+// --- UPDATED WIDGETS ---
 
 class SessionCard extends StatelessWidget {
+  final String appointmentId; // ✅ New Field
   final String name, time, issue;
   final bool isLive;
-  const SessionCard({super.key, required this.name, required this.time, required this.issue, this.isLive = false});
+
+  const SessionCard({
+    super.key,
+    required this.appointmentId, // ✅ Require ID
+    required this.name,
+    required this.time,
+    required this.issue,
+    this.isLive = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -464,7 +483,11 @@ class SessionCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              CircleAvatar(radius: 25, backgroundColor: Colors.grey[200], child: Text(name.isNotEmpty ? name[0] : "?", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black54))),
+              CircleAvatar(
+                radius: 25,
+                backgroundColor: Colors.grey[200],
+                child: Text(name.isNotEmpty ? name[0] : "?", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black54)),
+              ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -483,11 +506,23 @@ class SessionCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(time, style: TextStyle(color: Colors.grey[600], fontSize: 13, fontWeight: FontWeight.w500)),
-              if(isLive)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(20)),
-                  child: const Text("Join Now", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+
+              if (isLive)
+                InkWell( // ✅ WRAPPED IN INKWELL
+                  onTap: () {
+                    // ✅ NAVIGATE TO DETAILS
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => SessionDetailsScreen(appointmentId: appointmentId),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(20)),
+                    child: const Text("Join Now", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
                 )
             ],
           )
@@ -497,7 +532,7 @@ class SessionCard extends StatelessWidget {
   }
 }
 
-// ✅ UPDATED RequestCard with Callbacks
+// ... (RequestCard remains unchanged) ...
 class RequestCard extends StatelessWidget {
   final String name, issue, timeRequested;
   final VoidCallback onAccept;
