@@ -101,17 +101,18 @@ type CounselorProfile
 type Appointment
 @model
 @auth(rules: [
-  { allow: owner },
-  { allow: owner, ownerField: "counselorID", operations: [read, update] }
+ { allow: owner }, # Creator (Counselor)
+     { allow: owner, ownerField: "counselorID", operations: [read, update] },
+     # ✅ ADD 1: Once booked, the Student owns this record too
+     { allow: owner, ownerField: "studentID", operations: [read, update] },
+     # ✅ ADD 2: Allow 'update' so Students can claim an Available slot
+     { allow: private, operations: [read, update] }
 ]) {
   id: ID!
-  # Mandatory field, so we use "0000" for empty slots
   studentID: ID! @index(name: "byStudent", sortKeyFields: ["date"])
   student: StudentProfile @belongsTo(fields: ["studentID"])
-
   counselorID: ID! @index(name: "byCounselor", sortKeyFields: ["date"])
   counselor: CounselorProfile @belongsTo(fields: ["counselorID"])
-
   date: AWSDate!
   timeSlot: String!
   status: AppointmentStatus!
