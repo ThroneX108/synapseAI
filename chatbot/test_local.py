@@ -24,7 +24,7 @@ def test():
             
     # Initialize
     # Using the key from app.py for testing purposes
-    api_key = "AIzaSyBUn5K_Ap-gNV3Mm45FxbZq8ljbsjDPpXw"
+    api_key = "YOUR_GEMINI_API_KEY"
     
     try:
         print("Step 1: Initializing RAG System...")
